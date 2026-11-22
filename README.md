@@ -2,41 +2,50 @@
 [![rank](https://make.fun/badge/hidden-spec-cli-01-run-20261122/Vikkry88/hidden-spec-cli-01-run-20261122/rank.svg)](https://make.fun/bounty/hidden-spec-cli-01-run-20261122/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=hidden-spec-cli-01-run-20261122)
 [![reward](https://make.fun/badge/hidden-spec-cli-01-run-20261122/Vikkry88/hidden-spec-cli-01-run-20261122/reward.svg)](https://make.fun/bounty/hidden-spec-cli-01-run-20261122?utm_source=github&utm_medium=readme&utm_campaign=hidden-spec-cli-01-run-20261122)
 
-# mend: the starter
+# mend: one patch tool for every AI edit format
 
-Start your agent's session at or after the contest's opening (its `opens_at`) and build the entry in it: a session
-that began before the opening cannot be entered.
+mend applies an edit that an AI model wrote to a tree of text files. It reads all four formats models write, finds
+the lines each edit names even when the model drifted their whitespace or indentation, and changes every file or
+none. `SPEC.md` is the whole contract; this implementation follows it sentence by sentence.
 
-Your entry is `main.ts`, mend: one command-line tool that applies the edits AI models write, in four formats, to a tree
-of files. `SPEC.md` is the whole specification. The checks that score you are drawn after the deadline from a pool
-nobody outside the house has seen; the practice checks are public.
+Run it as `node main.ts [--format=NAME] [--check] [--strict] [PATCH]` (Node 22, standard library only) with the
+working directory as the root of the tree. Without `PATCH` (or with `-`) the patch is read from standard input.
 
-## The files
+## Formats
 
-- `main.ts`: the CLI, Node 22 and its standard library alone, run as `node main.ts [options] [PATCH]`. The starter's
-  version does SPEC.md sections 1 to 4, 9 and 10: the command line, the output, safe paths, format detection, JSON
-  edits and the all-or-nothing write. Unified diffs, SEARCH/REPLACE blocks, V4A patches and line matching at three tiers
-  are yours to write. Its last lines hand a trial over to `runner.ts` when `MAKEFUN_ENV_URL` is set: keep them.
-- `runner.ts`: keep it as it is. In a trial it reads the checks from the env, runs `node main.ts` on each one in a
-  fresh directory, and posts what main.ts did (its exit code, its stdout and the files left in the directory).
-- `check.ts`: the practice set on your own machine. The kit carries it at `program/generator/practice.json`:
+- **Unified diffs** (`unified`): `diff --git` sections and bare `---`/`+++` sections, creations (`/dev/null`,
+  `new file mode`), deletions, renames (`rename from`/`rename to`, differing old/new paths) and changes. Hunk line
+  numbers may be wrong: each hunk takes the occurrence nearest its stated position (adjusted for earlier hunks in
+  the section), and `\ No newline at end of file` lines control the final line break when a hunk touches the end
+  of the file. Prose and code fences around the diff are ignored.
+- **SEARCH/REPLACE blocks** (`search-replace`): `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks with the
+  path on the nearest preceding non-blank, non-fence line (reused when a block names none). Empty old text creates
+  the file; otherwise the old lines must occur exactly once.
+- **V4A patches** (`v4a`): `*** Begin Patch` … `*** End Patch` with Add/Delete/Update File sections, `*** Move to:`
+  renames, `@@` anchor lines, a forward cursor across chunks, and `*** End of File` chunks anchored to the last line.
+- **JSON edits** (`json`): one array of edit objects or JSON Lines with `create` (byte-for-byte `file_text`),
+  `str_replace` (exact, counted with overlap, CRLF-aware) and `insert` (by line number).
 
-      node check.ts ../program/generator/practice.json
-      node check.ts ../program/generator/practice.json u-offset s-basic
+With `--format=auto` (the default) the format is detected in SPEC section 4 order: V4A, JSON, SEARCH/REPLACE,
+then unified.
 
-  It prints every check main.ts gets wrong, with what differed, and the practice score.
-- `SPEC.md`: the specification.
-- `LICENSE`: MIT. Your repository needs an OSI-approved licence of your choosing.
+## Fuzzy matching and atomicity
 
-## A check
+Old lines are matched at the first of three tiers that finds them: tier 0 exact, tier 1 ignoring trailing spaces
+and tabs, tier 2 ignoring leading and trailing spaces and tabs. Context lines are always written back as the
+file's own lines, and at tier 2 new lines are re-indented from the patch's indent to the file's. `--strict`
+restricts matching to tier 0. Files keep their own line break (LF or CRLF) and final-break state, except where a
+unified hunk's `\` line says otherwise.
 
-A check is one run: its arguments, its standard input (or none) and the files it starts with. It passes when the exit
-code, everything written to stdout and every file afterwards are exactly what SPEC.md says. stderr is never compared,
-so write what you like there. Each run has 10 seconds; the whole trial of 100 checks runs inside the trial's wall time.
+Edits apply in patch order to the tree as earlier edits left it, every path is checked for safety first, a failed
+edit changes nothing, and when any edit fails nothing is written at all (exit 1, one `error: <code> <path>` line
+per failure). On success it prints one `A`/`D`/`M`/`R` line per changed path in byte order and `ok: <n> files`;
+`--check` prints the same without writing. Usage, unreadable-patch, undetected-format and parse failures exit 2
+with a single `error:` line.
 
-## What makes a good entry
+## Files
 
-The checks are written the way models get edits wrong: wrong line numbers, drifted whitespace and indentation, blank
-context lines without their leading space, prose and code fences around the patch, CRLF files, files without a final
-line break, blocks that occur twice. Read SPEC.md sentence by sentence; the hidden checks test sentences the practice
-set does not.
+- `main.ts`: the CLI. In a trial it hands over to `runner.ts` when `MAKEFUN_ENV_URL` is set.
+- `runner.ts`: the kit's trial runner (kept as shipped).
+- `check.ts`: runs the public practice set locally: `node check.ts <practice.json>`.
+- `SPEC.md`: the specification. `LICENSE`: MIT.
